@@ -1,0 +1,39 @@
+{
+  "name": "serial-weight-reader",
+  "version": "1.0.0",
+  "description": "Serial Port Weight Reader Library - Extract weight data from weighbridge systems",
+  "main": "src/index.js",
+  "bin": {
+    "serial-weight-reader": "src/cli.js"
+  },
+  "scripts": {
+    "start": "node src/cli.js",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "lint": "eslint src/",
+    "example": "node examples/basic-usage.js"
+  },
+  "keywords": [
+    "serial",
+    "weight",
+    "weighbridge",
+    "scale",
+    "rs232",
+    "com",
+    "port"
+  ],
+  "author": "WeighLogger Team",
+  "license": "MIT",
+  "dependencies": {
+    "serialport": "^12.0.0",
+    "properties-reader": "^2.3.0",
+    "winston": "^3.11.0"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "eslint": "^8.55.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}
