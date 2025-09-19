@@ -16,6 +16,6 @@ if "%1"=="" (
     dist\serial-weight-reader.exe "%1"
 )
 
-echo.
-echo Press any key to exit...
-pause >nul
+REM echo.
+REM echo Press any key to exit...
+REM pause >nul
