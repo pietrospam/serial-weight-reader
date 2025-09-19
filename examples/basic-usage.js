@@ -7,10 +7,14 @@ async function basicExample() {
   console.log('📖 Serial Weight Reader - Basic Usage Example');
   console.log('════════════════════════════════════════════');
   
+  // Get config file from command line argument or use default
+  const configFile = process.argv[2] || './config.properties';
+  console.log(`📁 Using config file: ${configFile}`);
+  
   try {
     // Method 1: Using class directly
     console.log('\n🔧 Method 1: Using SerialWeightReader class');
-    const reader = new SerialWeightReader('./config.properties');
+    const reader = new SerialWeightReader(configFile);
     const result = await reader.readWeight();
     
     if (result.success) {
@@ -25,7 +29,7 @@ async function basicExample() {
     // Method 2: Using helper function
     console.log('\n🔧 Method 2: Using helper function');
     const { readWeight } = require('../src/index');
-    const quickResult = await readWeight('./config.properties');
+    const quickResult = await readWeight(configFile);
     
     console.log('Quick result:', {
       success: quickResult.success,
@@ -56,28 +60,23 @@ async function basicExample() {
  * Advanced usage example with custom configuration
  */
 async function advancedExample() {
-  console.log('\n📖 Advanced Example - Multiple readings');
-  console.log('════════════════════════════════════════');
+  console.log('\n📖 Advanced Example - Single reading');
+  console.log('═══════════════════════════════════════');
+  
+  // Get config file from command line argument or use default
+  const configFile = process.argv[2] || './config.properties';
   
   try {
-    const reader = new SerialWeightReader('./config.properties');
+    const reader = new SerialWeightReader(configFile);
     
-    // Take multiple readings
-    for (let i = 1; i <= 3; i++) {
-      console.log(`\n📊 Reading ${i}/3:`);
-      const result = await reader.readWeight();
-      
-      if (result.success) {
-        console.log(`  Weight: ${result.weight} kg (${result.readTime}ms)`);
-      } else {
-        console.log(`  Failed: ${result.error}`);
-      }
-      
-      // Wait 1 second between readings
-      if (i < 3) {
-        console.log('  ⏳ Waiting 1 second...');
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
+    // Take one reading - Keep it simple!
+    console.log('\n📊 Single reading:');
+    const result = await reader.readWeight();
+    
+    if (result.success) {
+      console.log(`  ✅ Weight: ${result.weight} kg (${result.readTime}ms)`);
+    } else {
+      console.log(`  ❌ Failed: ${result.error}`);
     }
     
   } catch (error) {

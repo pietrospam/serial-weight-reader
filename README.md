@@ -1,193 +1,284 @@
 # Serial Weight Reader
 
-A Node.js library for reading weight data from weighbridge systems via serial communication with **anti-reset protection** to prevent device restarts.
+A Node.js library for reading weight data from weighbridge systems via serial communication with **anti-reset protection** and support for multiple scale protocols.
 
 ## 🚀 Features
 
 - **Anti-Reset Protection**: Prevents weighbridge device from restarting when connecting
+- **Multi-Protocol Support**: Frame-based (STX/ETX) and line-based protocols  
+- **Production Ready**: Successfully tested with Coquimbito and San Juan scales
 - **Cross-platform**: Works on Windows and Linux
-- **Multiple protocols**: Supports frame-based (STX/ETX) and line-based protocols
-- **Multiple Scale Support**: Pre-configured for Coquimbito and other scales
-- **Configurable**: All settings via `config.properties` file
-- **Robust**: Automatic timeout handling and error recovery
-- **Flexible**: Customizable regex patterns for different scale manufacturers
-- **CLI & Library**: Use as command-line tool or integrate into your project
+- **Fast & Efficient**: Single reading approach (135-990ms response time)
+- **Configurable**: All settings via properties files
+- **KISS Principle**: Keep it simple stupid - minimal code, maximum reliability
+- **Robust Error Handling**: Automatic timeout and graceful port management
 
 ## 📦 Installation
 
 ```bash
-# Clone or copy the project
+# Clone the project
 git clone https://github.com/your-repo/serial-weight-reader.git
 cd serial-weight-reader
 
 # Install dependencies
 npm install
-
-# Make CLI globally available (optional)
-npm link
 ```
 
-## 🔧 Configuration
+## 🎯 Quick Start
 
-### Basic Configuration
+```javascript
+const SerialWeightReader = require('./src/SerialWeightReader');
 
-Edit `config.properties` to match your weighbridge system:
+// Create reader with your config
+const reader = new SerialWeightReader('config.properties');
 
+// Read weight (single reading)
+const result = await reader.readWeight();
+
+if (result.success) {
+  console.log(`Weight: ${result.weight} kg`);
+  console.log(`Protocol: ${result.protocol}`);
+  console.log(`Time: ${result.readTime}ms`);
+} else {
+  console.log(`Error: ${result.error}`);
+}
+```
+
+## 🔧 Configuration Examples
+
+### San Juan Scale (Frame Protocol)
 ```properties
-# Serial port configuration
+# config SanJuan.properties
 serial.port=COM3
 serial.baudRate=9600
 serial.dataBits=8
 serial.parity=none
 serial.stopBits=1
 
-# Anti-reset protection (prevents device restart)
+# Anti-reset protection
+serial.dtr=false
+serial.rts=false
 serial.rtscts=false
 serial.xon=false
 serial.xoff=false
 serial.xany=false
-serial.dtr=false
-serial.rts=false
+serial.hupcl=false
 
-# Protocol configuration
+# Frame protocol with STX/ETX delimiters
 protocol.type=frame
-regex.filter=1\\r\\n\\s*(\\d+)\\s*\\r\\n\\s*0
+regex.filter=1\r\n\s*(\d+)\s*\r\n\s*0
 
-# Timeout for reading data (milliseconds)
-read.timeout=10000
+# Delays for device compatibility
+open.delay=50
+close.delay=50
 
-# Logging
+# Timeout
+read.timeout=3000
 log.level=info
 ```
 
-## ⚠️ Anti-Reset Protection
-
-Many weighbridge devices restart when a serial connection is established due to DTR/RTS signal changes. This library includes **automatic anti-reset protection** that:
-
-- Disables flow control (RTS/CTS, XON/XOFF)
-- Sets DTR and RTS signals to LOW immediately after opening the port
-- Prevents unwanted device resets during connection
-
-### How it works:
-1. Port opens with flow control disabled
-2. DTR and RTS signals are immediately set to LOW
-3. Device stays operational without restart
-4. Weight data is read normally
-5. Port closes gracefully
-
-### Supported Protocols
-
-#### Frame Protocol (STX/ETX)
-Used by scales like San Juan scale that send data with STX/ETX delimiters:
-```
-[STX]1\r\n 20450 \r\n0[ETX]
-```
-
-Configuration:
+### Coquimbito Scale (Line Protocol)  
 ```properties
-protocol.type=frame
-regex.filter=1\\r\\n\\s*(\\d+)\\s*\\r\\n\\s*0
-```
-
-#### Line Protocol
-Used by scales like Coquimbito scale that send line-based data:
-```
-@000057\r, F000000\r, D002260\r
-```
-
-Configuration:
-```properties
-protocol.type=line
-regex.filter=[D@F](\\d+)
-```
-
-### 🎯 Pre-configured Scale Support
-
-#### Coquimbito Scale
-For Coquimbito weighbridge systems, use the included `config Coquimbito.properties`:
-
-```properties
-# Coquimbito Scale Configuration
+# config Coquimbito.properties
 serial.port=COM3
 serial.baudRate=1200
 serial.dataBits=8
 serial.parity=none
 serial.stopBits=1
-protocol.type=line
 
-# Coquimbito specific regex for @XXXXXX, FXXXXXX, DXXXXXX formats
-regex.filter=[D@F](\\d+)
-
-# Anti-reset protection (CRITICAL for Coquimbito)
+# Anti-reset protection
 serial.dtr=false
 serial.rts=false
 serial.rtscts=false
 serial.xon=false
 serial.xoff=false
 serial.xany=false
+serial.hupcl=false
 
-# Timing delays for sensitive device
-serial.openDelay=100
-serial.closeDelay=100
+# Line protocol
+protocol.type=line
+regex.filter=[D@F](\d+)
+
+# Longer delays for sensitive device
+open.delay=100
+close.delay=100
+
+# Longer timeout
+read.timeout=10000
+log.level=debug
 ```
 
-**Data formats supported:**
-- `@000057` - Standard weight reading
-- `F000000` - No weight/standby mode  
-- `D002260` - Weight reading (2.260 kg)
+## ⚠️ Anti-Reset Protection
 
-## 🖥️ CLI Usage
+Many weighbridge devices restart when a serial connection is established due to DTR/RTS signal changes. This library includes **automatic anti-reset protection**:
 
-### Basic usage
+### How it works:
+1. **Flow control disabled**: RTS/CTS, XON/XOFF turned off
+2. **Control signals set LOW**: DTR and RTS immediately set to false  
+3. **Device stays operational**: No restart during connection
+4. **Stabilization delay**: Configurable delay for sensitive devices
+5. **Graceful closure**: Maintains signals before closing
+
+### Critical for these devices:
+- ✅ **Coquimbito scales** - Requires 100ms delays + anti-reset
+- ✅ **San Juan scales** - Works with 50ms delays + anti-reset
+- ✅ **Most Arduino-based scales** - Benefits from anti-reset protection
+
+## 🖥️ Usage Examples
+
+### Simple Usage (Recommended)
 ```bash
-# Use default config.properties
-npm start
+# Run simple example with San Juan config
+node examples/simple-usage.js "config SanJuan.properties"
 
-# Use custom config file (like Coquimbito)
-npm start "config Coquimbito.properties"
-node src/cli.js "config Coquimbito.properties"
+# Run simple example with Coquimbito config  
+node examples/simple-usage.js "config Coquimbito.properties"
 ```
 
-### Example output
-```
-🔧 Serial Weight Reader CLI v1.0.0
-📁 Loading config from: config.properties
-─────────────────────────────────────
-⚖️  Weight: 20450 kg
-📡 Protocol: frame
-⏱️  Read time: 1250ms
-📄 Raw data: [STX]1\r\n 20450 \r\n0[ETX]
-```
-
-### Help
+### CLI Usage
 ```bash
-node src/cli.js --help
+# Use CLI with config file
+npm start "config SanJuan.properties"
 ```
 
-## 📚 Library Usage
-
-### Quick Start
-
+### Programmatic Usage
 ```javascript
-const { readWeight } = require('./src/index');
+const SerialWeightReader = require('./src/SerialWeightReader');
 
-async function getWeight() {
-  const result = await readWeight('./config.properties');
+async function readScaleWeight() {
+  const reader = new SerialWeightReader('config SanJuan.properties');
+  const result = await reader.readWeight();
   
   if (result.success) {
-    console.log(`Weight: ${result.weight} kg`);
+    console.log(`✅ Weight: ${result.weight} kg`);
+    console.log(`📡 Protocol: ${result.protocol}`);  
+    console.log(`⏱️  Time: ${result.readTime}ms`);
   } else {
-    console.error(`Error: ${result.error}`);
+    console.log(`❌ Error: ${result.error}`);
   }
 }
 
-getWeight();
+## 🛠️ Development & Testing
+
+### Run Examples
+```bash
+# Simple usage example (recommended)
+node examples/simple-usage.js "config SanJuan.properties"
+node examples/simple-usage.js "config Coquimbito.properties"
+
+# CLI usage
+npm start "config SanJuan.properties"
 ```
 
-### Advanced Usage
+### Testing
+```bash
+# Run tests (if available)
+npm test
 
-```javascript
-const { SerialWeightReader } = require('./src/index');
+# Lint code
+npm run lint
+```
+
+## 📁 Project Structure
+
+```
+serial-weight-reader/
+├── src/
+│   ├── SerialWeightReader.js    # 🎯 Main library class
+│   ├── cli.js                   # 🖥️ Command line interface  
+│   └── index.js                 # 📦 Library entry point
+├── examples/
+│   ├── simple-usage.js          # ✅ Recommended example (KISS)
+│   ├── basic-usage.js           # 📚 Complete examples
+│   └── anti-reset-usage.js      # 🔒 Anti-reset demo
+├── config SanJuan.properties    # ⚙️ San Juan scale config
+├── config Coquimbito.properties # ⚙️ Coquimbito scale config
+├── package.json
+└── README.md
+```
+
+## ⚙️ Configuration Reference
+
+### Serial Port Settings
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `serial.port` | string | `COM3` | Serial port path (COM3, /dev/ttyUSB0) |
+| `serial.baudRate` | number | `9600` | Communication speed |
+| `serial.dataBits` | number | `8` | Data bits per character |
+| `serial.parity` | string | `none` | Parity checking (none/even/odd) |
+| `serial.stopBits` | number | `1` | Stop bits |
+
+### Anti-Reset Protection
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `serial.dtr` | boolean | `false` | DTR signal (false = anti-reset) |
+| `serial.rts` | boolean | `false` | RTS signal (false = anti-reset) |
+| `serial.rtscts` | boolean | `false` | Hardware flow control |
+| `serial.xon` | boolean | `false` | XON software flow control |
+| `serial.xoff` | boolean | `false` | XOFF software flow control |
+| `serial.xany` | boolean | `false` | XANY flow control |
+| `serial.hupcl` | boolean | `false` | Hang up on close |
+
+### Protocol & Timing
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `protocol.type` | string | `frame` | Protocol type (frame/line) |
+| `regex.filter` | string | - | Regex for weight extraction |
+| `read.timeout` | number | `3000` | Read timeout in milliseconds |
+| `open.delay` | number | `50` | Delay after port open (ms) |
+| `close.delay` | number | `50` | Delay before port close (ms) |
+| `log.level` | string | `info` | Logging level (debug/info/warn/error) |
+
+## 🎯 Production Deployment
+
+### Tested Configurations
+
+#### ✅ San Juan Scale - Production Ready
+- **Protocol**: Frame (STX/ETX)
+- **Baud Rate**: 9600
+- **Response Time**: 135-990ms
+- **Status**: ✅ Working perfectly
+
+#### ✅ Coquimbito Scale - Production Ready  
+- **Protocol**: Line-based
+- **Baud Rate**: 1200
+- **Response Time**: 1000-3000ms
+- **Status**: ✅ Working with anti-reset protection
+
+### Best Practices
+1. **Always use anti-reset protection** for weighbridge devices
+2. **Test timeout values** based on your scale's response time
+3. **Use appropriate delays** for sensitive devices (Coquimbito: 100ms)
+4. **Monitor logs** with debug level during initial setup
+5. **Keep it simple** - single reading approach is most reliable
+```
+
+## 📋 Supported Protocols
+
+### Frame Protocol (STX/ETX) - San Juan Scale
+**Data format:**
+```
+[STX]          1[CR][LF]          0[CR][LF]          0[CR][LF][ETX]
+```
+
+**Features:**
+- STX (0x02) frame start delimiter
+- ETX (0x03) frame end delimiter  
+- Fast response time: **135-990ms**
+- Single frame processing
+- Immediate stop after valid reading
+
+### Line Protocol - Coquimbito Scale  
+**Data format:**
+```
+@000057[CR], F000000[CR], D002260[CR]
+```
+
+**Features:**
+- Line-based with carriage return delimiters
+- Multiple data formats (@, F, D prefixes)
+- Response time: **1000-3000ms**
+- Anti-reset critical for stability
 
 async function advancedExample() {
   // Create reader instance
@@ -357,55 +448,105 @@ serial.openDelay=100
 serial.closeDelay=100
 ```
 
+## 🐛 Troubleshooting
+
+### Common Issues
+
+#### Device Restarts When Connecting
+**Problem**: Scale/weighbridge restarts when opening serial connection.
+
+**✅ Solution**: Use anti-reset protection (already configured):
+```properties
+# These settings prevent device restart
+serial.dtr=false
+serial.rts=false
+serial.rtscts=false
+serial.xon=false
+serial.xoff=false
+serial.xany=false
+serial.hupcl=false
+```
+
 #### No Weight Data Received
+**Problem**: Connection opens but no weight data.
 
-**Problem**: Connection opens but no weight data is received.
-
-**Solutions**:
-1. Check if device uses correct protocol type:
+**✅ Solutions**:
+1. **Check protocol type**:
    ```properties
-   protocol.type=line  # for Coquimbito and similar
-   protocol.type=frame # for STX/ETX protocols
+   protocol.type=frame  # San Juan (STX/ETX)
+   protocol.type=line   # Coquimbito (line-based)
    ```
 
-2. Verify regex pattern matches your data format:
+2. **Verify regex pattern**:
    ```properties
-   # For Coquimbito: @000057, F000000, D002260
-   regex.filter=[D@F](\\d+)
+   # San Juan: [STX]1[CR][LF]0[CR][LF]0[CR][LF][ETX]  
+   regex.filter=1\r\n\s*(\d+)\s*\r\n\s*0
    
-   # For STX/ETX frames: [STX]1\r\n 20450 \r\n0[ETX]
-   regex.filter=1\\r\\n\\s*(\\d+)\\s*\\r\\n\\s*0
+   # Coquimbito: @000057, F000000, D002260
+   regex.filter=[D@F](\d+)
    ```
 
-3. Enable debug logging to see raw data:
+3. **Enable debug logging**:
    ```properties
    log.level=debug
    ```
 
 #### Timeout Errors
+**Problem**: Read operations timeout.
 
-**Problem**: Read operations timeout frequently.
-
-**Solutions**:
-1. Increase timeout value:
+**✅ Solutions**:
+1. **Increase timeout**:
    ```properties
-   read.timeout=15000  # 15 seconds
+   read.timeout=10000  # Coquimbito (slow)
+   read.timeout=3000   # San Juan (fast)
    ```
 
-2. Check baud rate matches device:
+2. **Check baud rate**:
    ```properties
-   serial.baudRate=1200  # for Coquimbito
-   serial.baudRate=9600  # for most others
+   serial.baudRate=1200  # Coquimbito
+   serial.baudRate=9600  # San Juan
    ```
 
-#### Coquimbito Specific Issues
+### Scale-Specific Solutions
 
-**Problem**: Coquimbito scale not responding or restarting.
+#### ✅ San Juan Scale Working Perfect
+- Protocol: `frame`
+- Baud: `9600`  
+- Timeout: `3000ms`
+- Response: **135-990ms**
 
-**Solution**: Use the provided Coquimbito configuration:
-```bash
-npm start "config Coquimbito.properties"
-```
+#### ✅ Coquimbito Scale Working Perfect
+- Protocol: `line`
+- Baud: `1200`
+- Timeout: `10000ms`
+- **Critical**: Anti-reset + delays required
+
+### Debug Steps
+1. **Enable debug logging**: `log.level=debug`
+2. **Check raw data output**: See what device actually sends
+3. **Test regex separately**: Use online regex tester
+4. **Verify port access**: Ensure no other apps using the port
+5. **Try different timeouts**: Start with longer timeouts
+
+### Support
+If you encounter issues with a new scale model:
+1. Enable debug logging
+2. Capture raw data output  
+3. Create appropriate regex pattern
+4. Test with both protocol types
+5. Adjust timeouts as needed
+
+## 📝 License
+
+This project is licensed under the MIT License.
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+---
+
+**🎯 Production Status**: Successfully deployed and tested with Coquimbito and San Juan weighbridge systems.
 
 The Coquimbito config includes:
 - ✅ 1200 baud rate (critical)

@@ -214,6 +214,18 @@ class SerialWeightReader {
           lastValidWeight = weightExtracted;
           this.logger.info(`Weight extracted: ${weightExtracted} kg`);
           
+          // For frame protocol, stop immediately after first valid reading
+          if (this.config.protocolType === 'frame') {
+            clearTimeout(timeout);
+            this.port.removeAllListeners('data');
+            this.port.removeAllListeners('error');
+            resolve({
+              weight: weightExtracted,
+              rawData: this.dataBuffer
+            });
+            return;
+          }
+          
           clearTimeout(timeout);
           resolve({
             weight: weightExtracted,
@@ -236,11 +248,46 @@ class SerialWeightReader {
    * @returns {number|null} Extracted weight or null
    */
   processFrameProtocol(data) {
-    // Check for complete frame (STX...ETX)
-    if (this.dataBuffer.includes('\x02') && this.dataBuffer.includes('\x03')) {
-      this.logger.debug('Complete frame detected');
-      return this.applyRegexFilter(this.dataBuffer);
+    // Look for the most recent STX to start a new frame
+    const lastStxIndex = this.dataBuffer.lastIndexOf('\x02'); // Last STX
+    
+    if (lastStxIndex !== -1) {
+      // Clear buffer up to the last STX to start fresh frame
+      const frameBuffer = this.dataBuffer.substring(lastStxIndex);
+      
+      // Look for ETX after the last STX
+      const etxIndex = frameBuffer.indexOf('\x03'); // ETX
+      
+      this.logger.debug(`Frame detection: Last STX at ${lastStxIndex}, ETX at ${etxIndex}, frame buffer length: ${frameBuffer.length}`);
+      
+      if (etxIndex !== -1) {
+        // Extract complete frame including STX and ETX
+        const frame = frameBuffer.substring(0, etxIndex + 1);
+        this.logger.debug('Complete frame detected:', this.formatControlChars(frame));
+        
+        // Process the frame and extract weight
+        const weight = this.applyRegexFilter(frame);
+        
+        if (weight !== null) {
+          // Remove processed frame from buffer and keep any remaining data
+          this.dataBuffer = this.dataBuffer.substring(lastStxIndex + etxIndex + 1);
+          return weight;
+        }
+      }
     }
+    
+    // If buffer gets too large without finding complete frame, clear old data
+    if (this.dataBuffer.length > 1000) {
+      this.logger.debug('Buffer too large, clearing old data');
+      // Keep only recent data that might contain start of new frame
+      const recentStx = this.dataBuffer.lastIndexOf('\x02');
+      if (recentStx !== -1) {
+        this.dataBuffer = this.dataBuffer.substring(recentStx);
+      } else {
+        this.dataBuffer = '';
+      }
+    }
+    
     return null;
   }
 
