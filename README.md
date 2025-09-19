@@ -7,6 +7,7 @@ A Node.js library for reading weight data from weighbridge systems via serial co
 - **Anti-Reset Protection**: Prevents weighbridge device from restarting when connecting
 - **Cross-platform**: Works on Windows and Linux
 - **Multiple protocols**: Supports frame-based (STX/ETX) and line-based protocols
+- **Multiple Scale Support**: Pre-configured for Coquimbito and other scales
 - **Configurable**: All settings via `config.properties` file
 - **Robust**: Automatic timeout handling and error recovery
 - **Flexible**: Customizable regex patterns for different scale manufacturers
@@ -27,6 +28,8 @@ npm link
 ```
 
 ## 🔧 Configuration
+
+### Basic Configuration
 
 Edit `config.properties` to match your weighbridge system:
 
@@ -89,14 +92,49 @@ regex.filter=1\\r\\n\\s*(\\d+)\\s*\\r\\n\\s*0
 #### Line Protocol
 Used by scales like Coquimbito scale that send line-based data:
 ```
-@DF023456\r
+@000057\r, F000000\r, D002260\r
 ```
 
 Configuration:
 ```properties
 protocol.type=line
-regex.filter=[@DF](\\d+)(?=\\r)
+regex.filter=[D@F](\\d+)
 ```
+
+### 🎯 Pre-configured Scale Support
+
+#### Coquimbito Scale
+For Coquimbito weighbridge systems, use the included `config Coquimbito.properties`:
+
+```properties
+# Coquimbito Scale Configuration
+serial.port=COM3
+serial.baudRate=1200
+serial.dataBits=8
+serial.parity=none
+serial.stopBits=1
+protocol.type=line
+
+# Coquimbito specific regex for @XXXXXX, FXXXXXX, DXXXXXX formats
+regex.filter=[D@F](\\d+)
+
+# Anti-reset protection (CRITICAL for Coquimbito)
+serial.dtr=false
+serial.rts=false
+serial.rtscts=false
+serial.xon=false
+serial.xoff=false
+serial.xany=false
+
+# Timing delays for sensitive device
+serial.openDelay=100
+serial.closeDelay=100
+```
+
+**Data formats supported:**
+- `@000057` - Standard weight reading
+- `F000000` - No weight/standby mode  
+- `D002260` - Weight reading (2.260 kg)
 
 ## 🖥️ CLI Usage
 
@@ -105,9 +143,9 @@ regex.filter=[@DF](\\d+)(?=\\r)
 # Use default config.properties
 npm start
 
-# Use custom config file
-npm start my-config.properties
-node src/cli.js my-config.properties
+# Use custom config file (like Coquimbito)
+npm start "config Coquimbito.properties"
+node src/cli.js "config Coquimbito.properties"
 ```
 
 ### Example output
@@ -160,19 +198,46 @@ async function advancedExample() {
     const result = await reader.readWeight();
     
     if (result.success) {
-      console.log('Weight data:', {
-        weight: result.weight,
-        protocol: result.protocol,
-        readTime: result.readTime,
-        rawData: result.rawData
-      });
+      console.log(`Weight: ${result.weight} kg`);
+      console.log(`Protocol: ${result.protocol}`);
+      console.log(`Raw data: ${result.rawData}`);
+      console.log(`Read time: ${result.readTime}ms`);
     } else {
-      console.error('Read failed:', result.error);
+      console.error(`Error: ${result.error}`);
     }
   } catch (error) {
-    console.error('Fatal error:', error.message);
+    console.error('Unexpected error:', error.message);
   }
 }
+
+advancedExample();
+```
+
+### Anti-Reset Example
+
+```javascript
+const { SerialWeightReader } = require('./src/index');
+
+async function antiResetExample() {
+  // Use Coquimbito configuration with anti-reset protection
+  const reader = new SerialWeightReader('./config Coquimbito.properties');
+  
+  try {
+    console.log('🔒 Opening with anti-reset protection...');
+    const result = await reader.readWeight();
+    
+    if (result.success) {
+      console.log(`✅ Weight read successfully: ${result.weight} kg`);
+      console.log(`📊 Raw data format: ${result.rawData}`);
+    } else {
+      console.error(`❌ Error: ${result.error}`);
+    }
+  } catch (error) {
+    console.error('❌ Unexpected error:', error.message);
+  }
+}
+
+antiResetExample();
 ```
 
 ### List Available Ports
@@ -231,10 +296,30 @@ serial-weight-reader/
 | `serial.dataBits` | number | `8` | Data bits |
 | `serial.parity` | string | `none` | Parity (none/even/odd) |
 | `serial.stopBits` | number | `1` | Stop bits |
+| `serial.dtr` | boolean | `false` | DTR signal state (anti-reset) |
+| `serial.rts` | boolean | `false` | RTS signal state (anti-reset) |
+| `serial.rtscts` | boolean | `false` | Hardware flow control |
+| `serial.xon` | boolean | `false` | Software flow control XON |
+| `serial.xoff` | boolean | `false` | Software flow control XOFF |
+| `serial.xany` | boolean | `false` | Software flow control XAny |
+| `serial.openDelay` | number | `100` | Delay after opening port (ms) |
+| `serial.closeDelay` | number | `100` | Delay before closing port (ms) |
+| `serial.hupcl` | boolean | `false` | Hang up on close |
 | `protocol.type` | string | `frame` | Protocol type (frame/line) |
 | `regex.filter` | string | `(\\d+)` | Regex to extract weight |
-| `read.timeout` | number | `3000` | Read timeout in milliseconds |
+| `read.timeout` | number | `10000` | Read timeout in milliseconds |
 | `log.level` | string | `info` | Log level (error/warn/info/debug) |
+
+### 🔒 Anti-Reset Configuration
+
+**Critical settings to prevent device restart:**
+- `serial.dtr=false` - Keep DTR signal LOW
+- `serial.rts=false` - Keep RTS signal LOW  
+- `serial.rtscts=false` - Disable hardware flow control
+- `serial.xon=false` - Disable XON flow control
+- `serial.xoff=false` - Disable XOFF flow control
+- `serial.openDelay=100` - Stabilization delay
+- `serial.closeDelay=100` - Graceful close delay
 
 ## 🚨 Error Handling
 
@@ -252,6 +337,81 @@ Enable debug logging to troubleshoot issues:
 ```properties
 log.level=debug
 ```
+
+### 🛠️ Troubleshooting
+
+#### Device Resets When Connecting
+
+**Problem**: Weighbridge device restarts/resets when opening serial connection.
+
+**Solution**: Enable anti-reset protection in your config:
+```properties
+# Critical anti-reset settings
+serial.dtr=false
+serial.rts=false
+serial.rtscts=false
+serial.xon=false
+serial.xoff=false
+serial.xany=false
+serial.openDelay=100
+serial.closeDelay=100
+```
+
+#### No Weight Data Received
+
+**Problem**: Connection opens but no weight data is received.
+
+**Solutions**:
+1. Check if device uses correct protocol type:
+   ```properties
+   protocol.type=line  # for Coquimbito and similar
+   protocol.type=frame # for STX/ETX protocols
+   ```
+
+2. Verify regex pattern matches your data format:
+   ```properties
+   # For Coquimbito: @000057, F000000, D002260
+   regex.filter=[D@F](\\d+)
+   
+   # For STX/ETX frames: [STX]1\r\n 20450 \r\n0[ETX]
+   regex.filter=1\\r\\n\\s*(\\d+)\\s*\\r\\n\\s*0
+   ```
+
+3. Enable debug logging to see raw data:
+   ```properties
+   log.level=debug
+   ```
+
+#### Timeout Errors
+
+**Problem**: Read operations timeout frequently.
+
+**Solutions**:
+1. Increase timeout value:
+   ```properties
+   read.timeout=15000  # 15 seconds
+   ```
+
+2. Check baud rate matches device:
+   ```properties
+   serial.baudRate=1200  # for Coquimbito
+   serial.baudRate=9600  # for most others
+   ```
+
+#### Coquimbito Specific Issues
+
+**Problem**: Coquimbito scale not responding or restarting.
+
+**Solution**: Use the provided Coquimbito configuration:
+```bash
+npm start "config Coquimbito.properties"
+```
+
+The Coquimbito config includes:
+- ✅ 1200 baud rate (critical)
+- ✅ Anti-reset protection
+- ✅ Multi-format regex ([D@F])
+- ✅ Appropriate delays
 
 This will show:
 - Raw serial data received
